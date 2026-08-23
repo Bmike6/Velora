@@ -16,19 +16,20 @@ export type VeloraArgumentList = {
 	yield:boolean?,
 	continuous:boolean?,
 	callbacks:{
-		onCompletedVelora:{(()->())}?,
+		onCompletedVelora:{[string]:{callback:(()->()), active:boolean}}?,
 		valueChangedVelora:{
 			<T>(valueListening:string, updatedValue:T)->()
 		}?,
 		durationReached:{
-			{
+			[string]:{
 				duration:number,
 				callback:()->(),
 				previousCalled:boolean,
+				active:boolean,
 			}
 		}?,
 		perFrame:{
-			(delta:number)->()
+			[string]:{callback:(delta:number, alpha:number, currentTime:number)->(), active:boolean}
 		}?
 	}?
 }
@@ -40,15 +41,16 @@ export type VeloraObject = {
 
 	-- private fields --
 	_callbacks:{
-		_onCompletedVelora:{(()->())},
+		_onCompletedVelora:{[string]:{callback:(()->()), active:boolean}},
 		_perFrameCallbacks:{
-			(delta:number)->()
+			[string]:{callback:(delta:number, alpha:number, currentTime:number)->(), active:boolean}
 		},
 		_onDurationReachedCallbacks:{
-			{
+			[string]:{
 				callback:()->(),
 				duration:number,
 				previousCalled:boolean,
+				active:boolean,
 			}
 		},
 		valueChangedVelora:{
@@ -78,7 +80,7 @@ export type VeloraObject = {
 	cancel:(self:VeloraObject)->(),
 	reset:(self:VeloraObject)->(),
 	destroy:(self:VeloraObject)->(),
-	setEaseStyle:(self:VeloraObject, style:EasingStyles.EaseStyles, style:EasingStyles.EaseStyles, tune:"In"|"Out"|"InOut")->(),
+	setEaseStyle:(self:VeloraObject, style:EasingStyles.EaseStyles, tune:"In"|"Out"|"InOut")->(),
 	extendDuration:(self:VeloraObject, newDuration:number)->(),
 
 	setGoal:(self:VeloraObject, goal:VelorableProperties.Properties, value:VelorableProperties.PropertyTypes)->(),	
@@ -87,14 +89,13 @@ export type VeloraObject = {
 
 
 	addObjectList:(self:VeloraObject, obj:{Instance})->(),
-
-	modifySettings:(self:VeloraObject, settings:Settings.SettingKeys)->(),
-
+	modifySettings:(self:VeloraObject, set:{[Settings.SettingKeys]:any})->(),
 	addCompletionCallback:(self:VeloraObject, callback:()->())->(),
-
 	addFrameCallback:(self:VeloraObject, (delta:number)->())->(),
-
 	addDurationReachedCallback:(self:VeloraObject, {callback:(delta:number)->()})->(),
+	
+	
+	toggleCallback:(self:VeloraObject, callbackChamber:"Frame"|"Duration"|"Ended", callbackID:string, toggle:boolean)->(),
 
 	-- private methods --
 	_setVeloraID:(self:VeloraObject)->(),
@@ -159,11 +160,8 @@ function VeloraObject.play(self:VeloraObject)
 	elseif self._veloraState == "Playing" then
 		warn(`Velora Object <{self._veloraID}> already running thread`)
 	end
-	self._veloraState = "Playing"
-	self._cyclesRan = 0
-	self._running = true
 	
-	task.spawn(function()
+	local function veloraLoop()
 		while self._running and task.wait() do
 			if self._veloraState == "Playing" and  self._cyclesRan >= 1 or self._veloraState == "Paused" and  self._cyclesRan >= 1 then continue end
 			if self._veloraState == "Inactive" and self.settings and self.settings.continousPlayback then
@@ -191,9 +189,14 @@ function VeloraObject.play(self:VeloraObject)
 				self._currentRunningTime = math.clamp(self._currentRunningTime+frameUpdate,0,self._duration)
 				self._alpha = math.clamp(self._currentRunningTime/self._duration, 0, 1)
 				for _, v in self._callbacks._onDurationReachedCallbacks do
-					if not v.previousCalled and self._currentRunningTime >= v.duration then
+					if not v.previousCalled and self._currentRunningTime >= v.duration  and v.active then
 						v.previousCalled = true
 						v.callback()
+					end
+				end
+				for _, v in self._callbacks._perFrameCallbacks do
+					if v.active then
+						v.callback(frameUpdate, self._alpha, self._currentRunningTime)
 					end
 				end
 				for i=1, #self._objectList do
@@ -219,9 +222,19 @@ function VeloraObject.play(self:VeloraObject)
 				end	
 			end)
 		end
-	end)
+	end
+	
+	
+	self._veloraState = "Playing"
+	self._cyclesRan = 0
+	self._running = true
+	
 	if self.settings.yield then
-		coroutine.yield(self._courutine) 
+		veloraLoop()
+	else
+		task.spawn(function()
+			veloraLoop()
+		end)
 	end
 end
 
@@ -261,11 +274,12 @@ function VeloraObject.reset(self:VeloraObject)
 	self:_setStartValues()
 end
 
-function VeloraObject.addDurationReachedCallback(self:VeloraObject, duration:number, callback:()->())
-	self._callbacks._onDurationReachedCallbacks[#self._callbacks._onDurationReachedCallbacks] = {
-		duration = duration,
+function VeloraObject.addDurationReachedCallback(self:VeloraObject, data:{duration:number, callback:()->(), id:string})
+	self._callbacks._onDurationReachedCallbacks[data.id] = {
+		duration = data.duration,
 		previousCalled = false,
-		callback = callback
+		callback = data.callback,
+		active = true,
 	}
 end
 
@@ -285,8 +299,11 @@ function VeloraObject.modifySettings(self:VeloraObject, set:{[Settings.SettingKe
 	end
 end
 
-function VeloraObject.addCompletionCallback(self:VeloraObject, callback:()->())
-	self._callbacks._onCompletedVelora[#self._callbacks._onCompletedVelora] = callback
+function VeloraObject.addCompletionCallback(self:VeloraObject, id:string, callback:()->())
+	self._callbacks._onCompletedVelora[id] = {
+		callback = callback,
+		active = true
+	}
 end
 
 function VeloraObject.setEaseStyle(self:VeloraObject, style:EasingStyles.EaseStyles, tune:"In"|"Out"|"InOut")
@@ -305,8 +322,11 @@ function VeloraObject.setCurrentTime(self:VeloraObject, number:number)
 	self._currentRunningTime = number
 end
 
-function VeloraObject.addFrameCallback(self:VeloraObject, callback:(delta:number)->())
-	self._callbacks._perFrameCallbacks[#self._callbacks._perFrameCallbacks] = callback
+function VeloraObject.addFrameCallback(self:VeloraObject, data:{callback:(delta:number, alpha:number, currentTime:number)->(), id:string})
+	self._callbacks._perFrameCallbacks[data.id] = {
+		active = true,
+		callback = data.callback
+	}
 end
 
 -- private methods --
@@ -329,13 +349,27 @@ function VeloraObject._setStartValues(self:VeloraObject)
 	end
 end
 
+function VeloraObject.toggleCallback(self:VeloraObject, callbackChamber:"Frame"|"Duration"|"Ended", callbackID:string, toggle:boolean)
+	if callbackChamber == "Frame" and self._callbacks._perFrameCallbacks[callbackID] then
+		self._callbacks._perFrameCallbacks[callbackID].active = toggle
+	elseif callbackChamber == "Duration" and self._callbacks._onDurationReachedCallbacks[callbackID] then
+		self._callbacks._onDurationReachedCallbacks[callbackID].active = toggle
+	elseif callbackChamber == "Ended" and self._callbacks._onCompletedVelora[callbackID] then
+		self._callbacks._onCompletedVelora[callbackID].active = true
+	else
+		warn("Invalid CB lookup")
+	end
+end
+
 function VeloraObject._handleVeloraCompletion(self:VeloraObject)
 	if self.settings.yield then
 		coroutine.resume(self._courutine)
 	end
 	self:_resetVeloraState()
 	for _, v in self._callbacks._onCompletedVelora do
-		v()
+		if v.active then
+			v.callback()
+		end
 	end
 end
 
@@ -348,5 +382,5 @@ function VeloraObject._resetVeloraState(self:VeloraObject)
 end
 
 
-print("Running Velora VER 1.0.0")
+print("Running Velora VER 1.1.0")
 return VeloraObject
