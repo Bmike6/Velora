@@ -24,4 +24,4 @@ your instances from point A to point B with any easing style you want.
 
 
 # Download
-you can manually fork this repo, or download the package link here: [[113585829627431](https://create.roblox.com/dashboard/creations/store/90682848524938
+you can manually fork this repo, or download the package link here: https://create.roblox.com/dashboard/creations/store/90682848524938
