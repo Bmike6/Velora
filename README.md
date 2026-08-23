@@ -7,7 +7,7 @@ As this is not tween service.
 
 
 # Features
-  Yielding
+  Yielding\n
   Pausing
   Multi Object Computation
   4 different callbacks for scenarios
