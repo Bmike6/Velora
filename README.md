@@ -7,13 +7,13 @@ As this is not tween service.
 
 
 # Features
-  Yielding\n
-  Pausing
-  Multi Object Computation
-  4 different callbacks for scenarios
-  Custom Easing Styles
-  Looped Veloras
-  Model Applications
+  Yielding, 
+  Pausing, 
+  Multi Object Computation, 
+  4 different callbacks for scenarios, 
+  Custom Easing Styles, 
+  Looped Veloras, 
+  Model Applications, 
   Strict Type Check
 
 
