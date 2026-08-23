@@ -21,3 +21,7 @@ As this is not tween service.
 Velora is very simple to use all you need to do is download the Velora module and read on the example file
 Velora was designed to be highly abstracted so you the client do not have to worry about much but just getting
 your instances from point A to point B with any easing style you want.
+
+
+# Download
+you can manually fork this repo, or download the package link here: [113585829627431](https://create.roblox.com/dashboard/creations/store/90682848524938/configure)
