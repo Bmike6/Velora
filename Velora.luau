@@ -7,7 +7,6 @@ local EasingStyles = require(script.Prefabs.EasingStyles)
 local RunService = game:GetService("RunService")
 local HTTP = game:GetService("HttpService")
 
-
 export type VeloraArgumentList = {
 	objects:{Instance}?,
 	duration:number?,
@@ -16,53 +15,47 @@ export type VeloraArgumentList = {
 	yield:boolean?,
 	continuous:boolean?,
 	callbacks:{
-		onCompletedVelora:{[string]:{callback:(()->()), active:boolean}}?,
+		onCompletedVelora:{(()->())}?,
 		valueChangedVelora:{
 			<T>(valueListening:string, updatedValue:T)->()
 		}?,
 		durationReached:{
-			[string]:{
+			{
 				duration:number,
 				callback:()->(),
 				previousCalled:boolean,
-				active:boolean,
 			}
 		}?,
 		perFrame:{
-			[string]:{callback:(delta:number, alpha:number, currentTime:number)->(), active:boolean}
+			(delta:number)->()
 		}?
 	}?
 }
 
-
 export type VeloraObject = {
 	-- public fields --
 	settings:typeof(table.clone(Settings)),	
-
 	-- private fields --
 	_callbacks:{
-		_onCompletedVelora:{[string]:{callback:(()->()), active:boolean}},
+		_onCompletedVelora:{(()->())},
 		_perFrameCallbacks:{
-			[string]:{callback:(delta:number, alpha:number, currentTime:number)->(), active:boolean}
+			(delta:number)->()
 		},
 		_onDurationReachedCallbacks:{
-			[string]:{
+			{
 				callback:()->(),
 				duration:number,
 				previousCalled:boolean,
-				active:boolean,
 			}
 		},
 		valueChangedVelora:{
 			<T>(valueListening:string, updatedValue:T)->()
 		}
 	},
-
 	_veloraState:"Playing"|"Paused"|"Inactive",
 
 	_goal:{[VelorableProperties.Properties]:VelorableProperties.PropertyTypes},
 	_start:{[Instance]:{VelorableProperties.PropertyTypes}},
-
 
 	_duration:number,
 	_currentRunningTime:number,
@@ -70,7 +63,9 @@ export type VeloraObject = {
 	_veloraID:string,
 	_objectList:{Instance},
 	_alpha:number,
-
+	_cyclesRan:number,
+	_reverse:boolean,
+	_running:boolean,
 	_courutine:thread,
 
 	-- public methods --
@@ -80,7 +75,7 @@ export type VeloraObject = {
 	cancel:(self:VeloraObject)->(),
 	reset:(self:VeloraObject)->(),
 	destroy:(self:VeloraObject)->(),
-	setEaseStyle:(self:VeloraObject, style:EasingStyles.EaseStyles, tune:"In"|"Out"|"InOut")->(),
+	setEaseStyle:(self:VeloraObject, style:EasingStyles.EaseStyles, style:EasingStyles.EaseStyles, tune:"In"|"Out"|"InOut")->(),
 	extendDuration:(self:VeloraObject, newDuration:number)->(),
 
 	setGoal:(self:VeloraObject, goal:VelorableProperties.Properties, value:VelorableProperties.PropertyTypes)->(),	
@@ -89,13 +84,14 @@ export type VeloraObject = {
 
 
 	addObjectList:(self:VeloraObject, obj:{Instance})->(),
-	modifySettings:(self:VeloraObject, set:{[Settings.SettingKeys]:any})->(),
+
+	modifySettings:(self:VeloraObject, settings:Settings.SettingKeys)->(),
+
 	addCompletionCallback:(self:VeloraObject, callback:()->())->(),
+
 	addFrameCallback:(self:VeloraObject, (delta:number)->())->(),
+
 	addDurationReachedCallback:(self:VeloraObject, {callback:(delta:number)->()})->(),
-	
-	
-	toggleCallback:(self:VeloraObject, callbackChamber:"Frame"|"Duration"|"Ended", callbackID:string, toggle:boolean)->(),
 
 	-- private methods --
 	_setVeloraID:(self:VeloraObject)->(),
@@ -103,14 +99,10 @@ export type VeloraObject = {
 	_resetVeloraState:(self:VeloraObject)->(),
 	_setStartValues:(self:VeloraObject)->(),
 	_easeStyle:(alpha:number)->number,
-	_cyclesRan:number,
-	_reverse:boolean,
-	_running:boolean,
+	_lerp:(a:number, b:number, t:number)->number,
 	
 
 }
-
-
 local VeloraObject = {}
 
 VeloraObject.__index = VeloraObject
@@ -118,7 +110,6 @@ VeloraObject.__index = VeloraObject
 VeloraObject.__tostring = function(self:VeloraObject)
 	return`Velora Object {self._veloraID}\n \t\t\t\tState: {self._veloraState}\n\t\t\t\tDuration: {self._duration}\n\t\t\t\tRunningTime: {self._currentRunningTime}`
 end
-
 
 function VeloraObject.new(arguments:VeloraArgumentList):VeloraObject
 	local self = setmetatable({}, VeloraObject)::VeloraObject
@@ -128,9 +119,6 @@ function VeloraObject.new(arguments:VeloraArgumentList):VeloraObject
 	self._objectList = arguments.objects or {}
 	self._duration = arguments.duration or 0
 	self._courutine = coroutine.running()
-	
-
-
 	self.settings = table.clone(Settings)
 	self.settings.easingStyle = arguments.easingStyle or "Linear" 
 	self.settings.yield = arguments.yield or false
@@ -152,7 +140,6 @@ function VeloraObject.new(arguments:VeloraArgumentList):VeloraObject
 	return self
 end
 
-
 function VeloraObject.play(self:VeloraObject) 
 	if self._veloraState == "Paused" then
 		self._veloraState = "Playing"
@@ -160,8 +147,11 @@ function VeloraObject.play(self:VeloraObject)
 	elseif self._veloraState == "Playing" then
 		warn(`Velora Object <{self._veloraID}> already running thread`)
 	end
+	self._veloraState = "Playing"
+	self._cyclesRan = 0
+	self._running = true
 	
-	local function veloraLoop()
+	task.spawn(function()
 		while self._running and task.wait() do
 			if self._veloraState == "Playing" and  self._cyclesRan >= 1 or self._veloraState == "Paused" and  self._cyclesRan >= 1 then continue end
 			if self._veloraState == "Inactive" and self.settings and self.settings.continousPlayback then
@@ -189,14 +179,9 @@ function VeloraObject.play(self:VeloraObject)
 				self._currentRunningTime = math.clamp(self._currentRunningTime+frameUpdate,0,self._duration)
 				self._alpha = math.clamp(self._currentRunningTime/self._duration, 0, 1)
 				for _, v in self._callbacks._onDurationReachedCallbacks do
-					if not v.previousCalled and self._currentRunningTime >= v.duration  and v.active then
+					if not v.previousCalled and self._currentRunningTime >= v.duration then
 						v.previousCalled = true
 						v.callback()
-					end
-				end
-				for _, v in self._callbacks._perFrameCallbacks do
-					if v.active then
-						v.callback(frameUpdate, self._alpha, self._currentRunningTime)
 					end
 				end
 				for i=1, #self._objectList do
@@ -205,7 +190,7 @@ function VeloraObject.play(self:VeloraObject)
 							if self._objectList[i]:IsA("Model") then
 								(self._objectList::any)[i]:PivotTo((self._goal::any)[property]:lerp((value::any),  self._easeStyle(self._alpha)))
 							elseif type(value) == "number" then
-								(self._objectList::any)[i][property] = 1-self._easeStyle(self._alpha)
+								(self._objectList::any)[i][property] = 1-self._lerp(value::number, (self._goal::any)[property], self._easeStyle(self._alpha))
 							else
 								(self._objectList::any)[i][property] = (self._goal::any)[property]:lerp((value::any),  self._easeStyle(self._alpha))
 							end
@@ -213,7 +198,7 @@ function VeloraObject.play(self:VeloraObject)
 							if self._objectList[i]:IsA("Model") then
 								(self._objectList::any)[i]:PivotTo((value::any):lerp((self._goal::any)[property],  self._easeStyle(self._alpha)))
 							elseif type(value) == "number" then
-								(self._objectList::any)[i][property] = self._easeStyle(self._alpha)
+								(self._objectList::any)[i][property] = self._lerp(value::number, (self._goal::any)[property], self._easeStyle(self._alpha))
 							else
 								(self._objectList::any)[i][property] = (value::any):lerp((self._goal::any)[property],  self._easeStyle(self._alpha))
 							end
@@ -222,19 +207,9 @@ function VeloraObject.play(self:VeloraObject)
 				end	
 			end)
 		end
-	end
-	
-	
-	self._veloraState = "Playing"
-	self._cyclesRan = 0
-	self._running = true
-	
+	end)
 	if self.settings.yield then
-		veloraLoop()
-	else
-		task.spawn(function()
-			veloraLoop()
-		end)
+		coroutine.yield(self._courutine) 
 	end
 end
 
@@ -274,12 +249,11 @@ function VeloraObject.reset(self:VeloraObject)
 	self:_setStartValues()
 end
 
-function VeloraObject.addDurationReachedCallback(self:VeloraObject, data:{duration:number, callback:()->(), id:string})
-	self._callbacks._onDurationReachedCallbacks[data.id] = {
-		duration = data.duration,
+function VeloraObject.addDurationReachedCallback(self:VeloraObject, duration:number, callback:()->())
+	self._callbacks._onDurationReachedCallbacks[#self._callbacks._onDurationReachedCallbacks] = {
+		duration = duration,
 		previousCalled = false,
-		callback = data.callback,
-		active = true,
+		callback = callback
 	}
 end
 
@@ -295,15 +269,12 @@ end
 
 function VeloraObject.modifySettings(self:VeloraObject, set:{[Settings.SettingKeys]:any}) 
 	for i, v in set do
-		(self.settings::any)[set] = v
+		(self.settings::any)[i] = v
 	end
 end
 
-function VeloraObject.addCompletionCallback(self:VeloraObject, id:string, callback:()->())
-	self._callbacks._onCompletedVelora[id] = {
-		callback = callback,
-		active = true
-	}
+function VeloraObject.addCompletionCallback(self:VeloraObject, callback:()->())
+	self._callbacks._onCompletedVelora[#self._callbacks._onCompletedVelora] = callback
 end
 
 function VeloraObject.setEaseStyle(self:VeloraObject, style:EasingStyles.EaseStyles, tune:"In"|"Out"|"InOut")
@@ -322,11 +293,8 @@ function VeloraObject.setCurrentTime(self:VeloraObject, number:number)
 	self._currentRunningTime = number
 end
 
-function VeloraObject.addFrameCallback(self:VeloraObject, data:{callback:(delta:number, alpha:number, currentTime:number)->(), id:string})
-	self._callbacks._perFrameCallbacks[data.id] = {
-		active = true,
-		callback = data.callback
-	}
+function VeloraObject.addFrameCallback(self:VeloraObject, callback:(delta:number)->())
+	self._callbacks._perFrameCallbacks[#self._callbacks._perFrameCallbacks] = callback
 end
 
 -- private methods --
@@ -349,27 +317,13 @@ function VeloraObject._setStartValues(self:VeloraObject)
 	end
 end
 
-function VeloraObject.toggleCallback(self:VeloraObject, callbackChamber:"Frame"|"Duration"|"Ended", callbackID:string, toggle:boolean)
-	if callbackChamber == "Frame" and self._callbacks._perFrameCallbacks[callbackID] then
-		self._callbacks._perFrameCallbacks[callbackID].active = toggle
-	elseif callbackChamber == "Duration" and self._callbacks._onDurationReachedCallbacks[callbackID] then
-		self._callbacks._onDurationReachedCallbacks[callbackID].active = toggle
-	elseif callbackChamber == "Ended" and self._callbacks._onCompletedVelora[callbackID] then
-		self._callbacks._onCompletedVelora[callbackID].active = true
-	else
-		warn("Invalid CB lookup")
-	end
-end
-
 function VeloraObject._handleVeloraCompletion(self:VeloraObject)
 	if self.settings.yield then
 		coroutine.resume(self._courutine)
 	end
 	self:_resetVeloraState()
 	for _, v in self._callbacks._onCompletedVelora do
-		if v.active then
-			v.callback()
-		end
+		v()
 	end
 end
 
@@ -381,6 +335,10 @@ function VeloraObject._resetVeloraState(self:VeloraObject)
 	end
 end
 
+function VeloraObject._lerp(a:number, b:number, t:number):number
+	return a + (b - a) * t
+end
 
-print("Running Velora VER 1.1.0")
+
+print("Running Velora VER 1.1.2")
 return VeloraObject
