@@ -24,4 +24,4 @@ your instances from point A to point B with any easing style you want.
 
 
 # Download
-you can manually fork this repo, or download the package link here: [https://create.roblox.com/dashboard/creations/store/90682848524938](https://create.roblox.com/store/asset/90682848524938/Velora?viewFromStudio=true&keyword=&searchId=a8fff9ec-6a37-47f5-be0d-5a671fe768d5)
+you can manually fork this repo, or download the package link here: [[https://create.roblox.com/dashboard/creations/store/90682848524938](https://create.roblox.com/store/asset/90682848524938/Velora?viewFromStudio=true&keyword=&searchId=a8fff9ec-6a37-47f5-be0d-5a671fe768d5)](https://create.roblox.com/store/asset/79837235142468/Velora?viewFromStudio=true&keyword=&searchId=a8981880-a014-481a-998a-20e5b17abc20)
