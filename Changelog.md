@@ -11,6 +11,6 @@
 # 1.2.2 CHANGES
  - fixed major interpolation bug with animation of models and reversal logic error
  - fixed error in bounce ease style
- - added support for model scalar tweening via property Size and CFrame
+ - added support for model scalar animation via property Size and CFrame
  - added basic _lerp private method for Velora
  
