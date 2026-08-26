@@ -75,8 +75,11 @@ export type VeloraObject = {
 	cancel:(self:VeloraObject)->(),
 	reset:(self:VeloraObject)->(),
 	destroy:(self:VeloraObject)->(),
-	setEaseStyle:(self:VeloraObject, style:EasingStyles.EaseStyles, style:EasingStyles.EaseStyles, tune:"In"|"Out"|"InOut")->(),
+	setEaseStyle:(self:VeloraObject, style:EasingStyles.EaseStyles, tune:"In"|"Out"|"InOut")->(),
 	extendDuration:(self:VeloraObject, newDuration:number)->(),
+	
+	clearObjects:(self:VeloraObject)->(),
+	removeObjects:(self:VeloraObject, {Instance|string} )->(),
 
 	setGoal:(self:VeloraObject, goal:VelorableProperties.Properties, value:VelorableProperties.PropertyTypes)->(),	
 	setStart:(self:VeloraObject, instance:Instance, startProperty:VelorableProperties.Properties, value:VelorableProperties.PropertyTypes)->(),
@@ -84,13 +87,9 @@ export type VeloraObject = {
 
 
 	addObjectList:(self:VeloraObject, obj:{Instance})->(),
-
 	modifySettings:(self:VeloraObject, settings:Settings.SettingKeys)->(),
-
 	addCompletionCallback:(self:VeloraObject, callback:()->())->(),
-
 	addFrameCallback:(self:VeloraObject, (delta:number)->())->(),
-
 	addDurationReachedCallback:(self:VeloraObject, {callback:(delta:number)->()})->(),
 
 	-- private methods --
@@ -184,8 +183,12 @@ function VeloraObject.play(self:VeloraObject)
 						v.callback()
 					end
 				end
+				
+		
+				
 				for i=1, #self._objectList do
 					for property, value in self._start[self._objectList[i]] do
+						
 						if self._reverse then
 							if self._objectList[i]:IsA("Model") then
 								(self._objectList::any)[i]:PivotTo((self._goal::any)[property]:lerp((value::any),  self._easeStyle(self._alpha)))
@@ -222,8 +225,30 @@ function VeloraObject.cancel(self:VeloraObject)
 	self._running = false
 	if self._veloraConnection then
 		self._veloraConnection:Disconnect()
+	end	
+end
+
+function VeloraObject.clearObjects(self:VeloraObject)
+	table.clear(self._objectList)
+end
+
+
+function VeloraObject.removeObject(self:VeloraObject, objectList:{Instance|string})
+	local retainList = {}
+	for _, object in objectList do
+		if (type(object) == "string") then
+			warn("WARING high computation for string search recommend type instance Lookup instead")
+			for i, listObject in self._objectList do
+				if listObject.Name == object::string then
+					break
+				end 
+				retainList[i] = listObject
+			end
+		else
+			table.remove(objectList, table.find(objectList, object::Instance))
+		end
 	end
-	
+	self._objectList = retainList
 end
 
 function VeloraObject.destroy(self:VeloraObject) -- clean as much as possible to make this object elligable for GC asap.
@@ -309,7 +334,7 @@ function VeloraObject._setStartValues(self:VeloraObject)
 		for property, value in self._goal do
 	
 			if self._objectList[obj]:IsA("Model") then
-				(self._start :: any)[self._objectList[obj]][property] = (self._objectList::any)[obj::any].PrimaryPart[property::any]
+				(self._start :: any)[self._objectList[obj]][property] = (self._objectList::any)[obj::any]
 			else
 				(self._start :: any)[self._objectList[obj]][property] = (self._objectList::any)[obj::any][property::any]
 			end
@@ -340,5 +365,5 @@ function VeloraObject._lerp(a:number, b:number, t:number):number
 end
 
 
-print("Running Velora VER 1.1.2")
+print("Running Velora VER 1.2.2")
 return VeloraObject
