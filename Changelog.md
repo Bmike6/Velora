@@ -14,3 +14,8 @@
  - added support for model scalar animation via property Size and CFrame
  - added basic _lerp private method for Velora
  
+# 1.3.0 CHANGES
+- added attributes
+- fixed settings type bug
+- added methods for adding and removing attributes
+- added per Frame functionality
