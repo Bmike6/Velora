@@ -14,6 +14,9 @@ export type VeloraArgumentList = {
 	goal:{[VelorableProperties.Properties]:VelorableProperties.PropertyTypes}?,
 	yield:boolean?,
 	continuous:boolean?,
+	attributes:{
+		[string]:any
+	}?,
 	callbacks:{
 		onCompletedVelora:{(()->())}?,
 		valueChangedVelora:{
@@ -56,7 +59,8 @@ export type VeloraObject = {
 
 	_goal:{[VelorableProperties.Properties]:VelorableProperties.PropertyTypes},
 	_start:{[Instance]:{VelorableProperties.PropertyTypes}},
-
+	attributes:{string:any},
+	
 	_duration:number,
 	_currentRunningTime:number,
 	_veloraConnection:RBXScriptConnection?,
@@ -87,7 +91,7 @@ export type VeloraObject = {
 
 
 	addObjectList:(self:VeloraObject, obj:{Instance})->(),
-	modifySettings:(self:VeloraObject, settings:Settings.SettingKeys)->(),
+	modifySettings:(self:VeloraObject, set:{[Settings.SettingKeys]:any})->(),
 	addCompletionCallback:(self:VeloraObject, callback:()->())->(),
 	addFrameCallback:(self:VeloraObject, (delta:number)->())->(),
 	addDurationReachedCallback:(self:VeloraObject, {callback:(delta:number)->()})->(),
@@ -127,6 +131,7 @@ function VeloraObject.new(arguments:VeloraArgumentList):VeloraObject
 	self._running = true
 	self._currentRunningTime = 0
 	self._cyclesRan = 0
+	self.attributes = arguments.attributes or {}
 	self._start = {}
 	self._callbacks = {
 		_onCompletedVelora = arguments.callbacks and arguments.callbacks.onCompletedVelora or {},
@@ -138,6 +143,7 @@ function VeloraObject.new(arguments:VeloraArgumentList):VeloraObject
 	self:_setStartValues()
 	return self
 end
+
 
 function VeloraObject.play(self:VeloraObject) 
 	if self._veloraState == "Paused" then
@@ -152,6 +158,7 @@ function VeloraObject.play(self:VeloraObject)
 	
 	task.spawn(function()
 		while self._running and task.wait() do
+			
 			if self._veloraState == "Playing" and  self._cyclesRan >= 1 or self._veloraState == "Paused" and  self._cyclesRan >= 1 then continue end
 			if self._veloraState == "Inactive" and self.settings and self.settings.continousPlayback then
 				self._veloraState = "Playing"
@@ -160,8 +167,12 @@ function VeloraObject.play(self:VeloraObject)
 				self._running = false
 				return
 			end
+			if not self or not self._running then return end
 			self._cyclesRan += 1
 			self._veloraConnection = RunService.Heartbeat:Connect(function(frameUpdate)
+				for _, v in self._callbacks._perFrameCallbacks do
+					v(frameUpdate)
+				end
 				if self._veloraState == "Paused" then 
 					return
 				elseif self._veloraState == "Inactive" and self._veloraConnection then
@@ -183,12 +194,8 @@ function VeloraObject.play(self:VeloraObject)
 						v.callback()
 					end
 				end
-				
-		
-				
 				for i=1, #self._objectList do
 					for property, value in self._start[self._objectList[i]] do
-						
 						if self._reverse then
 							if self._objectList[i]:IsA("Model") then
 								(self._objectList::any)[i]:PivotTo((self._goal::any)[property]:lerp((value::any),  self._easeStyle(self._alpha)))
@@ -231,7 +238,6 @@ end
 function VeloraObject.clearObjects(self:VeloraObject)
 	table.clear(self._objectList)
 end
-
 
 function VeloraObject.removeObject(self:VeloraObject, objectList:{Instance|string})
 	local retainList = {}
@@ -334,7 +340,7 @@ function VeloraObject._setStartValues(self:VeloraObject)
 		for property, value in self._goal do
 	
 			if self._objectList[obj]:IsA("Model") then
-				(self._start :: any)[self._objectList[obj]][property] = (self._objectList::any)[obj::any]
+				(self._start :: any)[self._objectList[obj]][property] = (self._objectList::any)[obj::any].PrimaryPart[property::any]
 			else
 				(self._start :: any)[self._objectList[obj]][property] = (self._objectList::any)[obj::any][property::any]
 			end
@@ -360,10 +366,24 @@ function VeloraObject._resetVeloraState(self:VeloraObject)
 	end
 end
 
+function VeloraObject.addAttributes(self:VeloraObject, attributes:{[string]:any})
+	for i, v in attributes do
+		(self.attributes::any)[i] = v
+	end
+end
+
+function VeloraObject.removeAttribute(self:VeloraObject, attributes:{string})
+	for i=1, #attributes do
+		(self.attributes::any)[attributes[i]] = nil
+	end
+end
+
+
+
 function VeloraObject._lerp(a:number, b:number, t:number):number
 	return a + (b - a) * t
 end
 
 
-print("Running Velora VER 1.2.2")
+print("Running Velora VER 1.3.0")
 return VeloraObject
