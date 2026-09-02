@@ -93,7 +93,7 @@ export type VeloraObject = {
 
 
 	addObjectList:(self:VeloraObject, obj:{Instance})->(),
-	modifySettings:(self:VeloraObject, settings:Settings.SettingKeys)->(),
+	modifySettings:(self:VeloraObject, {[Settings.SettingKeys]:any} )->(),
 	addCompletionCallback:(self:VeloraObject, callback:()->())->(),
 	addFrameCallback:(self:VeloraObject, (delta:number)->())->(),
 	addDurationReachedCallback:(self:VeloraObject, {callback:(delta:number)->()})->(),
@@ -337,8 +337,9 @@ function VeloraObject.addObjectList(self:VeloraObject, obj:{Instance})
 	end
 end
 
-function VeloraObject.modifySettings(self:VeloraObject, set:{[Settings.SettingKeys]:any}) 
+function VeloraObject.modifySettings(self:VeloraObject, set:{[Settings.k]:any}) 
 	for i, v in set do
+		
 		(self.settings::any)[i] = v
 	end
 end
