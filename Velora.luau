@@ -55,12 +55,14 @@ export type VeloraObject = {
 			<T>(valueListening:string, updatedValue:T)->()
 		}
 	},
+	attributes:{
+		[string]:any
+	},
 	_veloraState:"Playing"|"Paused"|"Inactive",
 
 	_goal:{[VelorableProperties.Properties]:VelorableProperties.PropertyTypes},
-	_start:{[Instance]:{VelorableProperties.PropertyTypes}},
-	attributes:{string:any},
-	
+	_start:{[Instance]:{[VelorableProperties.Properties]:VelorableProperties.PropertyTypes}},
+
 	_duration:number,
 	_currentRunningTime:number,
 	_veloraConnection:RBXScriptConnection?,
@@ -91,7 +93,7 @@ export type VeloraObject = {
 
 
 	addObjectList:(self:VeloraObject, obj:{Instance})->(),
-	modifySettings:(self:VeloraObject, set:{[Settings.SettingKeys]:any})->(),
+	modifySettings:(self:VeloraObject, settings:Settings.SettingKeys)->(),
 	addCompletionCallback:(self:VeloraObject, callback:()->())->(),
 	addFrameCallback:(self:VeloraObject, (delta:number)->())->(),
 	addDurationReachedCallback:(self:VeloraObject, {callback:(delta:number)->()})->(),
@@ -131,8 +133,8 @@ function VeloraObject.new(arguments:VeloraArgumentList):VeloraObject
 	self._running = true
 	self._currentRunningTime = 0
 	self._cyclesRan = 0
-	self.attributes = arguments.attributes or {}
 	self._start = {}
+	self.attributes = arguments.attributes or {}
 	self._callbacks = {
 		_onCompletedVelora = arguments.callbacks and arguments.callbacks.onCompletedVelora or {},
 		_onDurationReachedCallbacks = arguments.callbacks and arguments.callbacks.durationReached or {},
@@ -143,7 +145,6 @@ function VeloraObject.new(arguments:VeloraArgumentList):VeloraObject
 	self:_setStartValues()
 	return self
 end
-
 
 function VeloraObject.play(self:VeloraObject) 
 	if self._veloraState == "Paused" then
@@ -156,9 +157,8 @@ function VeloraObject.play(self:VeloraObject)
 	self._cyclesRan = 0
 	self._running = true
 	
-	task.spawn(function()
+	local function runLerp()
 		while self._running and task.wait() do
-			
 			if self._veloraState == "Playing" and  self._cyclesRan >= 1 or self._veloraState == "Paused" and  self._cyclesRan >= 1 then continue end
 			if self._veloraState == "Inactive" and self.settings and self.settings.continousPlayback then
 				self._veloraState = "Playing"
@@ -167,7 +167,6 @@ function VeloraObject.play(self:VeloraObject)
 				self._running = false
 				return
 			end
-			if not self or not self._running then return end
 			self._cyclesRan += 1
 			self._veloraConnection = RunService.Heartbeat:Connect(function(frameUpdate)
 				for _, v in self._callbacks._perFrameCallbacks do
@@ -194,19 +193,36 @@ function VeloraObject.play(self:VeloraObject)
 						v.callback()
 					end
 				end
+				
+		
+				
 				for i=1, #self._objectList do
 					for property, value in self._start[self._objectList[i]] do
 						if self._reverse then
 							if self._objectList[i]:IsA("Model") then
-								(self._objectList::any)[i]:PivotTo((self._goal::any)[property]:lerp((value::any),  self._easeStyle(self._alpha)))
+								if property == "CFrame" then
+									(self._objectList::any)[i]:PivotTo((value::any):Lerp((self._goal[property]::any),  1-self._easeStyle(self._alpha)))
+								elseif property == "Position" then
+									(self._objectList::any)[i]:PivotTo((value::any):Lerp((CFrame.new(self._goal[property]::any)),  1-self._easeStyle(self._alpha)))
+								elseif property == "Size" then
+									(self._objectList::any)[i]:ScaleTo(self._lerp(value::number, (self._goal::any)[property], 1-self._easeStyle(self._alpha)))
+								end
+	
 							elseif type(value) == "number" then
 								(self._objectList::any)[i][property] = 1-self._lerp(value::number, (self._goal::any)[property], self._easeStyle(self._alpha))
 							else
-								(self._objectList::any)[i][property] = (self._goal::any)[property]:lerp((value::any),  self._easeStyle(self._alpha))
+								(self._objectList::any)[i][property] = 1-(self._goal::any)[property]:lerp((value::any),  self._easeStyle(self._alpha))
 							end
 						else
 							if self._objectList[i]:IsA("Model") then
-								(self._objectList::any)[i]:PivotTo((value::any):lerp((self._goal::any)[property],  self._easeStyle(self._alpha)))
+								if property == "CFrame" then
+									(self._objectList::any)[i]:PivotTo((value::any):Lerp((self._goal[property]::any),  self._easeStyle(self._alpha)))
+								elseif property == "Position" then
+									
+									(self._objectList::any)[i]:PivotTo((value::any):Lerp((CFrame.new(self._goal[property]::any)),  self._easeStyle(self._alpha)))
+								elseif property == "Size" then
+									(self._objectList::any)[i]:ScaleTo(self._lerp(value::number, (self._goal::any)[property], self._easeStyle(self._alpha)))
+								end
 							elseif type(value) == "number" then
 								(self._objectList::any)[i][property] = self._lerp(value::number, (self._goal::any)[property], self._easeStyle(self._alpha))
 							else
@@ -217,9 +233,15 @@ function VeloraObject.play(self:VeloraObject)
 				end	
 			end)
 		end
-	end)
+	end
+	
+	
 	if self.settings.yield then
-		coroutine.yield(self._courutine) 
+		runLerp()
+	else
+		task.spawn(function()
+			runLerp()
+		end)
 	end
 end
 
@@ -267,7 +289,15 @@ end
 function VeloraObject.setGoal(self:VeloraObject, goal:VelorableProperties.Properties, value:VelorableProperties.PropertyTypes)
 	self._goal[goal] = value
 	for _, v in self._objectList do
-		(self._start[v]::any)[goal] = (v::any)[goal] 
+		if v:IsA("Model") then
+			if goal == "Position" or goal == "CFrame" then
+				(self._start[v]::any)[goal] = v:GetPivot()
+			else -- must be position only two supported overrides
+				(self._start[v]::any)[goal] = v:GetScale()
+			end
+		else
+			(self._start[v]::any)[goal] = (v::any)[goal] 
+		end
 	end
 end
 
@@ -292,7 +322,16 @@ function VeloraObject.addObjectList(self:VeloraObject, obj:{Instance})
 	for _, instance in obj do		
 		self._start[instance] = {}
 		for property, _ in self._goal do
-			(self._start[instance]::any)[property] = (instance::any)[property]
+			if instance:IsA("Model") then
+				if property == "Position" or property == "CFrame" then
+					(self._start[instance]::any)[property] = instance:GetPivot()
+				else -- must be position only two supported overrides
+ 					(self._start[instance]::any)[property] = instance:GetScale()
+				end
+			else
+				(self._start[instance]::any)[property] = (instance::any)[property]
+			end
+			
 		end
 		(self._objectList::any)[#self._objectList+1] = instance
 	end
@@ -340,11 +379,28 @@ function VeloraObject._setStartValues(self:VeloraObject)
 		for property, value in self._goal do
 	
 			if self._objectList[obj]:IsA("Model") then
-				(self._start :: any)[self._objectList[obj]][property] = (self._objectList::any)[obj::any].PrimaryPart[property::any]
+				if property == "Position" or property == "CFrame" then
+					(self._start :: any)[self._objectList[obj]][property] = (self._objectList::any)[obj::any]:GetPivot()
+				else -- must be position only two supported overrides
+					(self._start :: any)[self._objectList[obj]][property] = ((self._objectList::any)[obj::any]::Model):GetScale()
+				end
 			else
 				(self._start :: any)[self._objectList[obj]][property] = (self._objectList::any)[obj::any][property::any]
 			end
 		end
+	end
+end
+
+
+function VeloraObject.addAttributes(self:VeloraObject, attributes:{[string]:any})
+	for i, v in attributes do
+		(self.attributes::any)[i] = v
+	end
+end
+
+function VeloraObject.removeAttribute(self:VeloraObject, attributes:{string})
+	for i=1, #attributes do
+		(self.attributes::any)[attributes[i]] = nil
 	end
 end
 
@@ -365,20 +421,6 @@ function VeloraObject._resetVeloraState(self:VeloraObject)
 		v.previousCalled = false
 	end
 end
-
-function VeloraObject.addAttributes(self:VeloraObject, attributes:{[string]:any})
-	for i, v in attributes do
-		(self.attributes::any)[i] = v
-	end
-end
-
-function VeloraObject.removeAttribute(self:VeloraObject, attributes:{string})
-	for i=1, #attributes do
-		(self.attributes::any)[attributes[i]] = nil
-	end
-end
-
-
 
 function VeloraObject._lerp(a:number, b:number, t:number):number
 	return a + (b - a) * t
